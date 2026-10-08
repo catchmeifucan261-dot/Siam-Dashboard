@@ -29,15 +29,17 @@ def get_main_category(commodity_name):
     return "Other Commodities"
 
 def clean_val(val_str):
-    if not val_str or str(val_str).strip() in ['-', '']: return None
+    if not val_str or str(val_str).strip() in ['-', '', '*']: 
+        return None
     val_str = str(val_str).replace(',', '').strip()
     
-    # Handle ranges by finding average
+    # Handle ranges (e.g., 50,000-52,000) by taking the arithmetic mean
     if '-' in val_str and val_str.count('-') == 1 and not val_str.startswith('-'):
         parts = val_str.split('-')
         try:
             return (float(parts[0]) + float(parts[1])) / 2
-        except: pass
+        except: 
+            pass
         
     try:
         return float(re.sub(r'[^\d.]', '', val_str))
@@ -55,7 +57,6 @@ def process_siam_pdf(file_path):
             text = page.extract_text() or ""
             tables = page.extract_tables()
             
-            # Context mapping to identify irregular tables
             page_context = "Unknown"
             if "Crude Oil Prices" in text or "Europe Brent Spot Price FOB" in text: page_context = "Crude Oil"
             elif "Compressed Natural Gas" in text or "CNG" in text: page_context = "CNG"
@@ -68,7 +69,6 @@ def process_siam_pdf(file_path):
             elif "Ethanol Prices" in text: page_context = "Ethanol"
             elif "Baltic Dry Index" in text: page_context = "Baltic Dry Index"
             
-            # Dynamically pull the financial years out of the text headers
             fy_matches = re.findall(r'20(\d{2})-\d{2}', text)
             fy1 = fy_matches[0] if len(fy_matches) > 0 else "25"
             fy2 = fy_matches[1] if len(fy_matches) > 1 else str(int(fy1) + 1)
@@ -78,7 +78,8 @@ def process_siam_pdf(file_path):
             
             for table in tables:
                 for row in table:
-                    if not row or not row[0]: continue
+                    if not row or not row[0]: 
+                        continue
                     col0 = str(row[0]).strip().replace('\n', ' ')
                     
                     if "Commodity" in col0 and len(row) > 1 and row[1]:
@@ -86,7 +87,6 @@ def process_siam_pdf(file_path):
                     if "Month-Year" in col0 and len(row) > 1 and row[1]:
                         current_unit = str(row[1]).strip().replace('\n', ' ')
                         
-                    # Match Standard Date Rows (e.g., Aug-25)
                     is_date_row = re.match(r'^[a-zA-Z]{3,4}\s*\-?\s*\d{2}$', col0)
                     
                     if is_date_row:
@@ -95,11 +95,18 @@ def process_siam_pdf(file_path):
                         if current_commodity != "Unknown" and len(row) > 1:
                             val = clean_val(row[1])
                             if val is not None:
-                                extracted_data.append({'Main Category': get_main_category(current_commodity), 'Commodity': current_commodity, 'Date': date_str, 'Price': val, 'Unit': current_unit})
+                                extracted_data.append({
+                                    'Main Category': get_main_category(current_commodity), 
+                                    'Commodity': current_commodity, 
+                                    'Date': date_str, 
+                                    'Price': val, 
+                                    'Unit': current_unit
+                                })
                         
                         elif page_context == "Crude Oil" and len(row) > 1:
                             val = clean_val(row[1])
-                            if val is not None: extracted_data.append({'Main Category': 'Crude / Petroleum', 'Commodity': 'Crude Oil', 'Date': date_str, 'Price': val, 'Unit': '$/Barrel'})
+                            if val is not None: 
+                                extracted_data.append({'Main Category': 'Crude / Petroleum', 'Commodity': 'Crude Oil', 'Date': date_str, 'Price': val, 'Unit': '$/Barrel'})
                                 
                         elif page_context == "CNG" and len(row) >= 3:
                             v_del, v_mum = clean_val(row[1]), clean_val(row[2])
@@ -123,7 +130,6 @@ def process_siam_pdf(file_path):
                             val = clean_val(row[1])
                             if val is not None: extracted_data.append({'Main Category': 'Other Rates', 'Commodity': 'Baltic Dry Index', 'Date': date_str, 'Price': val, 'Unit': 'Points'})
 
-                    # Match Month-Only Rows for Forex (e.g., "Apr")
                     elif col0 in months_short or col0 in months_long:
                         short_m = col0[:3]
                         if short_m == 'Jun': short_m = 'June'
@@ -134,8 +140,7 @@ def process_siam_pdf(file_path):
                         for idx, m in enumerate(['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']):
                             if m in col0: month_idx = idx
                             
-                        is_next_year = month_idx >= 9 # Jan, Feb, Mar belong to the next calendar year
-                        
+                        is_next_year = month_idx >= 9
                         yr1_str = f"{short_m}-{str(int(fy1)+1) if is_next_year else fy1}"
                         yr2_str = f"{short_m}-{str(int(fy2)+1) if is_next_year else fy2}"
                         
